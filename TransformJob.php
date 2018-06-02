@@ -1,25 +1,41 @@
 <?php
 
 /**
- * This script scans an html file specified by the $url varialbe for html link elements; 
+ * This script scans an html file specified by the $url variable for html link elements; 
    Checks the http HEAD for the link, and if the contenttype header parameter contains 'xml',
    Gets the file, and does some simple introspection to identify the metadata dialect in the content, 
    If a know dialect is recognized, transforms the file to ISO19139 XML using an xslt for that dialect, 
    The ISO1939 result is placed in a location on the server running this php script.
    The location is specified by the $thedir variable.
    
-  The work is done by the parse_dir function. 
+  The work is done by the parse_dir function. input parameters for the function are defined by 
+  the variables defined below ($base_url, $url, and $thedir). 
   
   The specified URL location will be scanned recursively-- if one of the links points at an html
-  file, the parse_dir function is called recursively to examine that file for links. the final token 
+  file (content type contains html), the parse_dir function is called recursively to examine that file for links. the final token 
   (after the last '/') is used to generate a subdirectory to hold any transformed metadata from that 
   link.
   
-  This routine is designed for scanning sitemaps, sitemap indexes, or web accessible folders conataining
+  This routine is designed for scanning web accessible folders conataining
   metadata intended for harvesting.
+  This code is based on example from http://htmlparsing.com/php.html
 	
 	SMR 2018-06-01 Version 1.0
  */
+ 
+# $url is the location of the root directory that contains xml metadata records
+# or other subdirectories
+# $base_url is the base url for relative links found in documents at $url
+# $thedir is the path to a file system directory accessible by the server running
+   # this script; an output directory tree will be build there based on what is
+   # found at $url
+
+#$base_url="http://hydro10.sdsc.edu";
+ $base_url="http://132.249.238.169:8080";
+
+#$url = "http://hydro10.sdsc.edu/metadata/Wyoming_GeoLibrary/";
+$url = "http://132.249.238.169:8080/metadata/";
+$thedir="./sitemaptest/";
 
 # transform files from various metadata dialects to ISO19139 
 # transforms are loaded from the USGIN organization metadataTransforms gitHub repository
@@ -29,9 +45,12 @@ $EMLtoISOXslfile=file_get_contents("https://raw.githubusercontent.com/usgin/meta
 #eml transform has not been tested!
 $CSDGMtoISOXslfile=file_get_contents("https://raw.githubusercontent.com/usgin/metadataTransforms/master/csdgm2iso19115_usgin3.0.xslt");
 
-# set up the transform before entering loop so don't have to read the file each time.
+# set up the transform before entering loop so don't have to read the xsl file each time.
 $xslt = new XSLTProcessor();
 
+
+
+# this is where the work gets done
 function parse_dir($target,$url,$base_url){
 	
 	global $xslt, $DataCitetoISOXslfile, $DublinCoretoISOXslfile, $EMLtoISOXslfile, $CSDGMtoISOXslfile, $filecount;
@@ -70,8 +89,8 @@ function parse_dir($target,$url,$base_url){
 	@$dom->loadHTML($html);
 	
 
-	#echo "dirname: ".$dirname."<br/>";
-	#echo "location: ".$location."<br/>";
+	echo "dirname: ".$target."<br/>";
+	echo "location: ".$url."<br/>";
 
 	
 	$filecount = 0;
@@ -116,20 +135,23 @@ function parse_dir($target,$url,$base_url){
 			echo $thehref." is not an xml file";
 			echo "<br />";
 
-			#get the last segment of the URL, this will be a new directory in the output directory
+			if (strpos($contenttype,'html')){
+				# if the link returns html, get the last segment of the URL, 
+				# and use to generate a new directory in the output tree for
+				# metadata found at links there
+				$dirname = $urltokens[count($urltokens)-1];
+				echo "dirname: ". $dirname ."<br/>";
 
-			$dirname = $urltokens[count($urltokens)-1];
-			echo "dirname: ". $dirname ."<br/>";
+				
+				$thedir = $target.$dirname."/";
+				if (!is_dir($thedir)){
+							echo "mkdir: ".$thedir."<br/>";
+							mkdir($thedir);
+						}
 
-			
-			$thedir = $target.$dirname."/";
-			if (!is_dir($thedir)){
-						echo "mkdir: ".$thedir."<br/>";
-						mkdir($thedir);
-					}
-
-			echo "call pars_dir: " . $thedir . ", " .$service. "<br/>";
-			parse_dir( $thedir,$service,$base_url );
+				echo "call pars_dir: " . $thedir . ", " .$service. "<br/>";
+				parse_dir( $thedir,$service,$base_url );
+			}
 
 		} else {
 			 #set up the file name for the ISO output
@@ -217,18 +239,9 @@ function parse_dir($target,$url,$base_url){
 				echo "<br />";
 			}
 		}
-	}
-}
+	}  #end of for each link loop
+}  # end of parse_dir function definition
 
-# code based on example from http://htmlparsing.com/php.html
-# this is the location of the root directory that contains xml metadata records
-# or other subdirectories
-
-#$base_url="http://hydro10.sdsc.edu";
-$base_url="http://132.249.238.169:8080";
-#$url = "http://hydro10.sdsc.edu/metadata/Wyoming_GeoLibrary/";
-$url = "http://132.249.238.169:8080/metadata/cn.dataone.org/";
-$thedir="./ISOfiles/cn.dataone.org/";
 
 if (!is_dir($thedir)){
 	mkdir($thedir);
